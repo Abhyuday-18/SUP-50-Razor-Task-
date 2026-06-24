@@ -1,0 +1,238 @@
+1st Prompt :-
+We are building a working backend project. Create the entire project structure with all files in place and working. Here are the exact requirements:
+Stack:
+
+Backend: Express.js (JavaScript only, no TypeScript)
+Database: PostgreSQL (hosted on Supabase, connection via DATABASE_URL)
+ORM: Drizzle ORM for all queries
+Migrations: Drizzle Kit
+
+Port: The server must run strictly on port 7002. Read it from .env as PORT but default must be 7002.
+Folder structure — create every file listed:
+razorpay-reimbursements/
+  package.json
+  .env
+  drizzle.config.js
+  prompt-logs.txt
+  src/
+    server.js
+    app.js
+    config/
+      db.js
+      env.js
+    db/
+      schema/
+        users.js
+        employeeManager.js
+        reimbursements.js
+        reimbursementApprovals.js
+        index.js
+      migrations/
+      seed.js
+    middlewares/
+      authenticate.js
+      authorize.js
+      errorHandler.js
+    modules/
+      auth/
+        auth.routes.js
+        auth.controller.js
+        auth.service.js
+      roles/
+        roles.routes.js
+        roles.controller.js
+        roles.service.js
+      employees/
+        employees.routes.js
+        employees.controller.js
+        employees.service.js
+      reimbursements/
+        reimbursements.routes.js
+        reimbursements.controller.js
+        reimbursements.service.js
+    utils/
+      AppError.js
+      responseHelper.js
+package.json scripts — these must be exactly named:
+
+dev — nodemon src/server.js — starts the app on port 7002
+db:generate — drizzle-kit generate — generates migration files from schema (used during dev)
+db:migrate — drizzle-kit migrate — applies migrations to the database (this is what the tester runs)
+db:seed-data — node src/db/seed.js — seeds the CFO account only, nothing else
+
+Dependencies to install:
+
+express — HTTP framework
+drizzle-orm — ORM for all DB queries
+postgres — PostgreSQL driver used by drizzle-orm
+jsonwebtoken — signs and verifies JWT tokens
+bcryptjs — hashes passwords before storing, verifies on login (use bcryptjs not bcrypt, no native compilation issues)
+cookie-parser — parses httpOnly cookies so Express can read the JWT token
+cors — cross-origin headers, must be configured with credentials: true and origin explicitly set (not wildcard *) so cookies are sent correctly
+morgan — HTTP request logger, use dev format
+dotenv — loads .env file into process.env at startup
+
+Dev dependencies:
+
+drizzle-kit — CLI for generating and running migrations
+nodemon — auto-restarts server on file changes
+
+Environment variables — create .env with these keys as placeholders:
+DATABASE_URL=
+JWT_SECRET=
+PORT=7002
+File responsibilities:
+src/server.js — entry point only. Imports app, starts listening on port 7002.
+src/app.js — sets up Express, registers all middleware (cors with credentials:true, morgan, cookie-parser, express.json), mounts all module routers under the /rest prefix.
+src/config/env.js — validates that DATABASE_URL and JWT_SECRET exist in process.env at startup. If either is missing, throw an error immediately and stop the server.
+src/config/db.js — creates and exports the drizzle database instance using the postgres driver and DATABASE_URL.
+drizzle.config.js — drizzle-kit config. Schema path points to src/db/schema/index.js, migrations output to src/db/migrations/.
+Database schema — create these 4 tables in their respective files:
+src/db/schema/users.js — table users with columns: id (uuid, primary key, default gen_random_uuid()), name (text, not null), email (text, not null, unique), password_hash (text, not null), role (text, not null, default 'EMP'), created_at (timestamp, default now()).
+src/db/schema/employeeManager.js — table employee_manager with columns: id (uuid, primary key), emp_id (uuid, FK to users.id), rm_id (uuid, FK to users.id), assigned_at (timestamp, default now()).
+src/db/schema/reimbursements.js — table reimbursements with columns: id (uuid, primary key), emp_id (uuid, FK to users.id), title (text, not null), description (text), amount (numeric, not null), rm_approved (boolean, default false), ape_approved (boolean, default false), status (text, default 'PENDING'), created_at (timestamp, default now()), updated_at (timestamp, default now()).
+src/db/schema/reimbursementApprovals.js — table reimbursement_approvals with columns: id (uuid, primary key), reimbursement_id (uuid, FK to reimbursements.id), approver_id (uuid, FK to users.id), approver_role (text, not null), decision (text, not null), decided_at (timestamp, default now()).
+src/db/schema/index.js — exports all four schemas together.
+Seed file:
+src/db/seed.js — inserts exactly one user, the CFO account. Email: cfo@org.com, password: CFO#ORG@April2026 (bcrypt hash it before inserting), role: CFO, name: CFO. Do not seed anything else. The script must be idempotent — if the CFO already exists, skip insertion without error.
+Middleware files:
+src/middlewares/authenticate.js — reads the JWT from an httpOnly cookie named exactly token. Verifies it using JWT_SECRET. Attaches the decoded user payload to req.user. If cookie is missing or token is invalid, respond with 401.
+src/middlewares/authorize.js — a factory function that takes an array of allowed roles and returns an Express middleware. Checks req.user.role against the allowed roles. If not allowed, respond with 403.
+src/middlewares/errorHandler.js — global Express error handler (4 arguments). Handles AppError instances and unexpected errors. Always responds with JSON.
+Utils:
+src/utils/AppError.js — a custom error class extending Error. Constructor takes message and statusCode.
+src/utils/responseHelper.js — exports two functions: sendSuccess(res, data, statusCode=200) sends { status: 'success', data } and sendError(res, message, statusCode) sends { status: 'error', message }.
+Module files — create route, controller, service for each module. Leave controller and service functions as stubs (empty functions with a TODO comment) for now. Only wire up the routes:
+All routes are under /rest prefix (mounted in app.js).
+auth module routes:
+
+POST /rest/onboardings/register
+POST /rest/onboardings/login
+POST /rest/onboardings/logout
+
+roles module routes:
+
+POST /rest/roles/assign
+
+employees module routes:
+
+GET /rest/employees
+POST /rest/employees/assign
+DELETE /rest/employees/assign
+
+reimbursements module routes:
+
+POST /rest/reimbursements
+PATCH /rest/reimbursements
+GET /rest/reimbursements
+GET /rest/reimbursements/:userId
+
+Other:
+prompt-logs.txt — create this file at the root. Leave it empty for now.
+Node version required: >= 20.10.2. Add engines field in package.json specifying this.
+Do not use TypeScript. Do not use ESM imports — use CommonJS (require/module.exports) throughout.4
+
+
+
+2nd Prompt:-
+
+Now that the folder structure and scaffold are in place, implement the business logic for the following modules. Do NOT touch any reimbursement logic yet — leave those controller and service stubs as they are.
+Roles & Hierarchy:
+There are 4 roles: EMP, RM, APE, CFO. Every new registered user gets EMP by default. The CFO is the only one who can change roles.
+
+AUTH MODULE — implement fully
+POST /rest/onboardings/register
+
+Request body: name, email, password
+Only allow emails ending in @org.com — reject anything else with 400
+Hash password with bcryptjs before storing
+Role defaults to EMP automatically — user never picks their role
+If email already exists, return 400 with a clear message
+On success return { status: 'success', data: { userId, name, email, role } }
+
+POST /rest/onboardings/login
+
+Request body: email, password
+Only allow emails ending in @org.com — reject anything else with 400
+Verify password against bcrypt hash
+On success, sign a JWT containing { userId, email, role } using JWT_SECRET
+Set the JWT as an httpOnly cookie named exactly token with sameSite: 'lax'
+On success return { status: 'success', data: { userId, name, email, role } }
+
+POST /rest/onboardings/logout
+
+Clears the token cookie
+Returns { status: 'success', data: { message: 'Logged out successfully' } }
+
+
+ROLES MODULE — implement fully
+POST /rest/roles/assign
+
+Protected: only CFO can call this (use authenticate + authorize middleware)
+Request body: userId, role
+Allowed roles to assign: EMP, RM, APE only — assigning CFO role must be blocked with 400
+If userId does not exist, return 404
+If the role string is not one of the valid values, return 400
+If the user already has that role, return 400 with message "User already has this role"
+Role downgrade logic: if the user currently has role RM and is being changed to any other role, automatically delete all rows in employee_manager where rm_id matches that user's id. Those employees are now unassigned and can be reassigned to another RM by the CFO later.
+On success return { status: 'success', data: { userId, name, email, role } } with the updated user
+
+
+EMPLOYEES MODULE — implement fully
+GET /rest/employees
+
+Protected: EMP is not allowed — return 403 if an EMP calls this
+RM: returns only the EMPs assigned to them (rows in employee_manager where rm_id = calling user's id), joined with users table
+APE: returns all users with role EMP and all users with role RM
+CFO: returns all users (every role including APE and CFO)
+Response shape exactly:
+
+json{
+  "status": "success",
+  "data": {
+    "users": [
+      { "userId": "...", "name": "...", "email": "...", "role": "..." }
+    ]
+  }
+}
+POST /rest/employees/assign
+
+Protected: only CFO can call this
+Request body: empId (the EMP's userId), rmId (the RM's userId)
+Validate that the user with empId has role EMP — if not, return 400
+Validate that the user with rmId has role RM — if not, return 400
+If the EMP is already assigned to an RM, return 400 with message "Employee is already assigned to a reporting manager"
+On success insert into employee_manager and return { status: 'success', data: { message: 'Employee assigned successfully' } }
+
+DELETE /rest/employees/assign
+
+Protected: only CFO can call this
+Request body: empId, rmId
+Validate both users exist and have correct roles
+If the assignment does not exist, return 404 with message "Assignment not found"
+On success delete the row and return { status: 'success', data: { message: 'Assignment removed successfully' } }
+
+
+MIDDLEWARE — verify these are correctly wired:
+authenticate.js — reads JWT from httpOnly cookie named token, verifies with JWT_SECRET, attaches decoded payload to req.user. Returns 401 if cookie missing or token invalid or expired.
+authorize.js — factory function, takes array of allowed roles like ['CFO'] or ['CFO', 'RM']. Checks req.user.role. Returns 403 with { status: 'error', message: 'Forbidden' } if role not allowed.
+errorHandler.js — catches AppError instances and returns their statusCode and message. For unexpected errors returns 500 with a safe generic message. Never expose stack traces in responses.
+
+EDGE CASES to handle explicitly:
+
+Any protected route called without a cookie → 401
+Any route called with a valid cookie but wrong role → 403
+POST /rest/roles/assign with role: 'CFO' → 400 with message "Cannot assign CFO role"
+POST /rest/employees/assign where empId and rmId are the same user → 400 with message "Employee and manager cannot be the same user"
+DELETE /rest/employees/assign where assignment doesn't exist → 404
+All DB errors should be caught and passed to the global error handler via next(error)
+
+
+Do NOT implement yet:
+
+POST /rest/reimbursements
+PATCH /rest/reimbursements
+GET /rest/reimbursements
+GET /rest/reimbursements/:userId
+
+Leave those route stubs and controller/service functions exactly as they were — empty with TODO comments.

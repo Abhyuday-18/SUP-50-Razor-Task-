@@ -1,0 +1,33 @@
+{
+  "name": "razorpay-reimbursements",
+  "version": "1.0.0",
+  "description": "Razorpay Reimbursements Backend API",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20.10.2"
+  },
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:seed-data": "node src/db/seed.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "drizzle-orm": "^0.35.3",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.28.1",
+    "nodemon": "^3.1.7"
+  }
+}
