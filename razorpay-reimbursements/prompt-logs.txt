@@ -374,3 +374,79 @@ All DB errors caught and passed to global error handler via next(error)
 
 
 Do not change anything outside the reimbursements module — auth, roles, employees, middlewares stay exactly as they are.
+
+
+4th Prompt :- bug fix 
+
+Make the following targeted changes to the reimbursements module only. Do not touch any other module, middleware, or configuration.
+Context for why this change is needed:
+
+The current PATCH /rest/reimbursements only accepts userId and status. If an EMP has raised multiple reimbursements, there is no way to target a specific one. The fix is to include reimbursementId in both the GET response (so approvers can see which ID to reference) and the PATCH request body (so they can target exactly one RI).
+
+CHANGE 1 — GET /rest/reimbursements response shape
+Add reimbursementId as the first field in every reimbursement object returned, for ALL roles (EMP, RM, APE, CFO). The updated response shape must be exactly:
+json{
+  "status": "success",
+  "data": {
+    "reimbursements": [
+      {
+        "reimbursementId": "uuid-here",
+        "title": "...",
+        "description": "...",
+        "amount": 999,
+        "status": "..."
+      }
+    ]
+  }
+}
+This applies to every role's query in the GET handler — EMP sees their own RIs with reimbursementId, RM sees their pending RIs with reimbursementId, APE sees RM-approved pending RIs with reimbursementId, CFO sees fully approved RIs with reimbursementId. No role is excluded from seeing the reimbursementId.
+
+CHANGE 2 — GET /rest/reimbursements/:userId response shape
+Same change — add reimbursementId as the first field in every reimbursement object returned here as well. Exact same shape as above.
+
+CHANGE 3 — PATCH /rest/reimbursements request body
+The PATCH endpoint now accepts three fields in the request body:
+
+userId — the EMP who owns the RI (already existed)
+reimbursementId — the specific RI being acted on (new, required)
+status — either 'APPROVED' or 'REJECTED' (already existed)
+
+Validation to add at the top of the PATCH service function before any role logic runs:
+
+If reimbursementId is missing from request body → return 400 with message "reimbursementId is required"
+If userId is missing → return 400 with message "userId is required"
+If status is missing or not exactly 'APPROVED' or 'REJECTED' → return 400 with message "status must be APPROVED or REJECTED"
+Look up the reimbursement by reimbursementId in the DB — if not found → return 404 with message "Reimbursement not found"
+Validate that the found reimbursement's emp_id matches the provided userId — if they do not match → return 400 with message "Reimbursement does not belong to this user"
+If the reimbursement's current status is already 'REJECTED' → return 400 with message "Reimbursement has already been rejected"
+
+Only after all six validations pass should the role-based approval logic execute. The role logic itself (RM gate, APE gate, CFO flow, dual approval check) remains exactly the same as before — only the targeting changes from "find by userId" to "find by reimbursementId, then validate userId matches".
+
+CHANGE 4 — PATCH service internal query change
+Previously the service was finding the RI by emp_id = userId. Now it must:
+
+Find the specific RI by id = reimbursementId (single row lookup, not a bulk query)
+Then verify emp_id = userId as a validation step (covered in validation above)
+Then proceed with the same role-based approval logic on that single RI
+
+Remove any logic that was applying the action to multiple RIs at once. Each PATCH call now targets exactly one RI identified by its reimbursementId.
+
+Do not change anything else:
+
+Do not touch POST /rest/reimbursements
+Do not touch GET /rest/reimbursements filter logic — only add reimbursementId to the response shape
+Do not touch GET /rest/reimbursements/:userId filter logic — only add reimbursementId to the response shape
+Do not touch auth, roles, employees, middlewares, config, or seed files
+Do not change the dual approval logic, rejection finality rule, or role visibility rules
+
+
+After applying these changes, the correct test flow for multiple RIs is:
+
+EMP creates RI #1 and RI #2
+EMP calls GET /rest/reimbursements → sees both with their unique reimbursementIds
+RM calls GET /rest/reimbursements → sees both pending RIs with their reimbursementIds
+RM calls PATCH with { userId, reimbursementId: "id-of-RI-1", status: "APPROVED" } → only RI #1 is affected
+RI #2 remains untouched and still PENDING
+APE calls GET /rest/reimbursements → sees only RI #1 (rm_approved=true), not RI #2
+APE calls PATCH with { userId, reimbursementId: "id-of-RI-1", status: "APPROVED" } → RI #1 is now fully APPROVED
+EMP calls GET /rest/reimbursements → sees RI #1 as APPROVED, RI #2 still PENDING

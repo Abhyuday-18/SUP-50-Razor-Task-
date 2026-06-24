@@ -36,21 +36,40 @@ const createReimbursement = async ({ title, description, amount, empId }) => {
 };
 
 // ─── PATCH /rest/reimbursements ──────────────────────────────────────────────
-const updateReimbursement = async ({ userId, status, callerId, callerRole }) => {
-  // Validate status value
+const updateReimbursement = async ({ userId, reimbursementId, status, callerId, callerRole }) => {
+  // ─── Upfront validations (all 6 checks before any role logic) ───────────
+  if (!reimbursementId) {
+    throw new AppError('reimbursementId is required', 400);
+  }
+  if (!userId) {
+    throw new AppError('userId is required', 400);
+  }
   if (!status || !['APPROVED', 'REJECTED'].includes(status)) {
-    throw new AppError('Status must be either APPROVED or REJECTED', 400);
+    throw new AppError('status must be APPROVED or REJECTED', 400);
   }
 
-  // Validate userId format
-  if (!userId || !uuidRegex.test(userId)) {
+  // Validate UUID formats
+  if (!uuidRegex.test(reimbursementId)) {
+    throw new AppError('Invalid reimbursementId format', 400);
+  }
+  if (!uuidRegex.test(userId)) {
     throw new AppError('Invalid userId format', 400);
   }
 
-  // Verify the target user exists and is an EMP
-  const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
-  if (!targetUser) {
-    throw new AppError('User not found', 404);
+  // Look up the specific reimbursement by its ID
+  const [ri] = await db.select().from(reimbursements).where(eq(reimbursements.id, reimbursementId));
+  if (!ri) {
+    throw new AppError('Reimbursement not found', 404);
+  }
+
+  // Validate that the RI belongs to the provided userId
+  if (ri.emp_id !== userId) {
+    throw new AppError('Reimbursement does not belong to this user', 400);
+  }
+
+  // Check if already rejected
+  if (ri.status === 'REJECTED') {
+    throw new AppError('Reimbursement has already been rejected', 400);
   }
 
   // ─── RM logic ────────────────────────────────────────────────────────────
@@ -63,148 +82,107 @@ const updateReimbursement = async ({ userId, status, callerId, callerRole }) => 
       throw new AppError('You are not the reporting manager for this employee', 403);
     }
 
-    // Find PENDING RIs for this EMP where RM has not yet acted (rm_approved = false)
-    const pendingRIs = await db.select().from(reimbursements).where(
-      and(
-        eq(reimbursements.emp_id, userId),
-        eq(reimbursements.status, 'PENDING'),
-        eq(reimbursements.rm_approved, false)
-      )
-    );
-
-    if (pendingRIs.length === 0) {
+    // RM can only act if rm_approved is still false and status is PENDING
+    if (ri.rm_approved || ri.status !== 'PENDING') {
       throw new AppError('No actionable reimbursement found for this user', 404);
     }
 
-    for (const ri of pendingRIs) {
-      if (ri.status === 'REJECTED') {
-        throw new AppError('Reimbursement has already been rejected', 400);
-      }
-
-      if (status === 'REJECTED') {
-        await db.update(reimbursements)
-          .set({ status: 'REJECTED', updated_at: new Date() })
-          .where(eq(reimbursements.id, ri.id));
-      } else {
-        // APPROVED by RM
-        const newStatus = ri.ape_approved ? 'APPROVED' : 'PENDING';
-        await db.update(reimbursements)
-          .set({ rm_approved: true, status: newStatus, updated_at: new Date() })
-          .where(eq(reimbursements.id, ri.id));
-      }
-
-      // Insert audit log
-      await db.insert(reimbursementApprovals).values({
-        reimbursement_id: ri.id,
-        approver_id: callerId,
-        approver_role: 'RM',
-        decision: status,
-      });
+    if (status === 'REJECTED') {
+      await db.update(reimbursements)
+        .set({ status: 'REJECTED', updated_at: new Date() })
+        .where(eq(reimbursements.id, ri.id));
+    } else {
+      // APPROVED by RM
+      const newStatus = ri.ape_approved ? 'APPROVED' : 'PENDING';
+      await db.update(reimbursements)
+        .set({ rm_approved: true, status: newStatus, updated_at: new Date() })
+        .where(eq(reimbursements.id, ri.id));
     }
+
+    // Insert audit log
+    await db.insert(reimbursementApprovals).values({
+      reimbursement_id: ri.id,
+      approver_id: callerId,
+      approver_role: 'RM',
+      decision: status,
+    });
 
     return { message: 'Reimbursement status updated' };
   }
 
   // ─── APE logic ───────────────────────────────────────────────────────────
   if (callerRole === 'APE') {
-    // APE can act on RIs where rm_approved = true and status = PENDING
-    const pendingRIs = await db.select().from(reimbursements).where(
-      and(
-        eq(reimbursements.emp_id, userId),
-        eq(reimbursements.status, 'PENDING'),
-        eq(reimbursements.rm_approved, true),
-        eq(reimbursements.ape_approved, false)
-      )
-    );
-
-    if (pendingRIs.length === 0) {
+    // APE can only act if rm_approved = true, ape_approved = false, status = PENDING
+    if (!ri.rm_approved || ri.ape_approved || ri.status !== 'PENDING') {
       throw new AppError('No actionable reimbursement found for this user', 404);
     }
 
-    for (const ri of pendingRIs) {
-      if (ri.status === 'REJECTED') {
-        throw new AppError('Reimbursement has already been rejected', 400);
-      }
-
-      if (status === 'REJECTED') {
-        await db.update(reimbursements)
-          .set({ status: 'REJECTED', updated_at: new Date() })
-          .where(eq(reimbursements.id, ri.id));
-      } else {
-        // APPROVED by APE
-        const newStatus = ri.rm_approved ? 'APPROVED' : 'PENDING';
-        await db.update(reimbursements)
-          .set({ ape_approved: true, status: newStatus, updated_at: new Date() })
-          .where(eq(reimbursements.id, ri.id));
-      }
-
-      // Insert audit log
-      await db.insert(reimbursementApprovals).values({
-        reimbursement_id: ri.id,
-        approver_id: callerId,
-        approver_role: 'APE',
-        decision: status,
-      });
+    if (status === 'REJECTED') {
+      await db.update(reimbursements)
+        .set({ status: 'REJECTED', updated_at: new Date() })
+        .where(eq(reimbursements.id, ri.id));
+    } else {
+      // APPROVED by APE — since rm_approved is already true, status becomes APPROVED
+      const newStatus = ri.rm_approved ? 'APPROVED' : 'PENDING';
+      await db.update(reimbursements)
+        .set({ ape_approved: true, status: newStatus, updated_at: new Date() })
+        .where(eq(reimbursements.id, ri.id));
     }
+
+    // Insert audit log
+    await db.insert(reimbursementApprovals).values({
+      reimbursement_id: ri.id,
+      approver_id: callerId,
+      approver_role: 'APE',
+      decision: status,
+    });
 
     return { message: 'Reimbursement status updated' };
   }
 
   // ─── CFO logic ───────────────────────────────────────────────────────────
   if (callerRole === 'CFO') {
-    // CFO acts on PENDING RIs — determines which gate to fill
-    const pendingRIs = await db.select().from(reimbursements).where(
-      and(
-        eq(reimbursements.emp_id, userId),
-        eq(reimbursements.status, 'PENDING')
-      )
-    );
-
-    if (pendingRIs.length === 0) {
+    // CFO can only act on PENDING RIs
+    if (ri.status !== 'PENDING') {
       throw new AppError('No actionable reimbursement found for this user', 404);
     }
 
-    for (const ri of pendingRIs) {
-      if (ri.status === 'REJECTED') {
-        throw new AppError('Reimbursement has already been rejected', 400);
-      }
-
-      if (status === 'REJECTED') {
-        await db.update(reimbursements)
-          .set({ status: 'REJECTED', updated_at: new Date() })
-          .where(eq(reimbursements.id, ri.id));
-
-        await db.insert(reimbursementApprovals).values({
-          reimbursement_id: ri.id,
-          approver_id: callerId,
-          approver_role: 'CFO',
-          decision: 'REJECTED',
-        });
-        continue;
-      }
-
-      // APPROVED — determine which gate to fill
-      if (!ri.rm_approved) {
-        // CFO fills the RM gate
-        const newStatus = ri.ape_approved ? 'APPROVED' : 'PENDING';
-        await db.update(reimbursements)
-          .set({ rm_approved: true, status: newStatus, updated_at: new Date() })
-          .where(eq(reimbursements.id, ri.id));
-      } else if (!ri.ape_approved) {
-        // CFO fills the APE gate
-        const newStatus = ri.rm_approved ? 'APPROVED' : 'PENDING';
-        await db.update(reimbursements)
-          .set({ ape_approved: true, status: newStatus, updated_at: new Date() })
-          .where(eq(reimbursements.id, ri.id));
-      }
+    if (status === 'REJECTED') {
+      await db.update(reimbursements)
+        .set({ status: 'REJECTED', updated_at: new Date() })
+        .where(eq(reimbursements.id, ri.id));
 
       await db.insert(reimbursementApprovals).values({
         reimbursement_id: ri.id,
         approver_id: callerId,
         approver_role: 'CFO',
-        decision: 'APPROVED',
+        decision: 'REJECTED',
       });
+
+      return { message: 'Reimbursement status updated' };
     }
+
+    // APPROVED — determine which gate to fill
+    if (!ri.rm_approved) {
+      // CFO fills the RM gate
+      const newStatus = ri.ape_approved ? 'APPROVED' : 'PENDING';
+      await db.update(reimbursements)
+        .set({ rm_approved: true, status: newStatus, updated_at: new Date() })
+        .where(eq(reimbursements.id, ri.id));
+    } else if (!ri.ape_approved) {
+      // CFO fills the APE gate
+      const newStatus = ri.rm_approved ? 'APPROVED' : 'PENDING';
+      await db.update(reimbursements)
+        .set({ ape_approved: true, status: newStatus, updated_at: new Date() })
+        .where(eq(reimbursements.id, ri.id));
+    }
+
+    await db.insert(reimbursementApprovals).values({
+      reimbursement_id: ri.id,
+      approver_id: callerId,
+      approver_role: 'CFO',
+      decision: 'APPROVED',
+    });
 
     return { message: 'Reimbursement status updated' };
   }
@@ -219,6 +197,7 @@ const getReimbursements = async ({ callerRole, callerId }) => {
   if (callerRole === 'EMP') {
     // EMP sees all their own RIs
     result = await db.select({
+      reimbursementId: reimbursements.id,
       title: reimbursements.title,
       description: reimbursements.description,
       amount: reimbursements.amount,
@@ -228,6 +207,7 @@ const getReimbursements = async ({ callerRole, callerId }) => {
   } else if (callerRole === 'RM') {
     // RM sees PENDING RIs from EMPs assigned to them
     result = await db.select({
+      reimbursementId: reimbursements.id,
       title: reimbursements.title,
       description: reimbursements.description,
       amount: reimbursements.amount,
@@ -245,6 +225,7 @@ const getReimbursements = async ({ callerRole, callerId }) => {
   } else if (callerRole === 'APE') {
     // APE sees RIs where rm_approved = true AND status = PENDING
     result = await db.select({
+      reimbursementId: reimbursements.id,
       title: reimbursements.title,
       description: reimbursements.description,
       amount: reimbursements.amount,
@@ -259,6 +240,7 @@ const getReimbursements = async ({ callerRole, callerId }) => {
   } else if (callerRole === 'CFO') {
     // CFO sees fully approved RIs
     result = await db.select({
+      reimbursementId: reimbursements.id,
       title: reimbursements.title,
       description: reimbursements.description,
       amount: reimbursements.amount,
@@ -302,6 +284,7 @@ const getReimbursementsByUser = async ({ targetUserId, callerRole, callerId }) =
 
   // Fetch all RIs for the target EMP
   const result = await db.select({
+    reimbursementId: reimbursements.id,
     title: reimbursements.title,
     description: reimbursements.description,
     amount: reimbursements.amount,

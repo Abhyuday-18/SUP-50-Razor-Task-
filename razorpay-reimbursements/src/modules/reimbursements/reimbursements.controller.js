@@ -20,9 +20,10 @@ const createReimbursement = async (req, res, next) => {
 // PATCH /rest/reimbursements — RM, APE, CFO
 const updateReimbursement = async (req, res, next) => {
   try {
-    const { userId, status } = req.body;
+    const { userId, reimbursementId, status } = req.body;
     const result = await reimbursementsService.updateReimbursement({
       userId,
+      reimbursementId,
       status,
       callerId: req.user.userId,
       callerRole: req.user.role,
