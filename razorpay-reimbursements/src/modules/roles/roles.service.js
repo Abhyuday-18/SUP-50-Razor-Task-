@@ -16,6 +16,12 @@ const assignRole = async ({ userId, role }) => {
     throw new AppError('Invalid role. Allowed roles: EMP, RM, APE', 400);
   }
 
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!userId || !uuidRegex.test(userId)) {
+    throw new AppError('Invalid userId format. Must be a valid UUID.', 400);
+  }
+
   // Check if user exists
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) {

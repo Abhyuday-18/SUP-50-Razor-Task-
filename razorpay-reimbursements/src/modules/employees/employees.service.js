@@ -56,6 +56,15 @@ const assignManager = async ({ empId, rmId }) => {
     throw new AppError('Employee and manager cannot be the same user', 400);
   }
 
+  // Validate UUID formats
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!empId || !uuidRegex.test(empId)) {
+    throw new AppError('Invalid empId format. Must be a valid UUID.', 400);
+  }
+  if (!rmId || !uuidRegex.test(rmId)) {
+    throw new AppError('Invalid rmId format. Must be a valid UUID.', 400);
+  }
+
   // Validate emp exists and has role EMP
   const [emp] = await db.select().from(users).where(eq(users.id, empId));
   if (!emp) {
@@ -94,6 +103,15 @@ const assignManager = async ({ empId, rmId }) => {
 };
 
 const removeManager = async ({ empId, rmId }) => {
+  // Validate UUID formats
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!empId || !uuidRegex.test(empId)) {
+    throw new AppError('Invalid empId format. Must be a valid UUID.', 400);
+  }
+  if (!rmId || !uuidRegex.test(rmId)) {
+    throw new AppError('Invalid rmId format. Must be a valid UUID.', 400);
+  }
+
   // Validate emp exists and has role EMP
   const [emp] = await db.select().from(users).where(eq(users.id, empId));
   if (!emp) {
