@@ -450,3 +450,8 @@ RI #2 remains untouched and still PENDING
 APE calls GET /rest/reimbursements → sees only RI #1 (rm_approved=true), not RI #2
 APE calls PATCH with { userId, reimbursementId: "id-of-RI-1", status: "APPROVED" } → RI #1 is now fully APPROVED
 EMP calls GET /rest/reimbursements → sees RI #1 as APPROVED, RI #2 still PENDING
+
+
+5th Prompt :-
+1. CFO GET — currently only returns fully APPROVED RIs. Needs to also return REJECTED ones for audit. Fix the query to return where status = 'APPROVED' OR status = 'REJECTED'.
+2. Duplicate approval block — if RM calls PATCH APPROVED on an RI where rm_approved is already true, return 400 with "You have already approved this reimbursement". Same for APE if ape_approved is already true.

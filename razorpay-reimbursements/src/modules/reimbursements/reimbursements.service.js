@@ -1,4 +1,4 @@
-const { eq, and } = require('drizzle-orm');
+const { eq, and, inArray } = require('drizzle-orm');
 const db = require('../../config/db');
 const { users, reimbursements, reimbursementApprovals, employeeManager } = require('../../db/schema');
 const AppError = require('../../utils/AppError');
@@ -82,6 +82,10 @@ const updateReimbursement = async ({ userId, reimbursementId, status, callerId, 
       throw new AppError('You are not the reporting manager for this employee', 403);
     }
 
+    if (status === 'APPROVED' && ri.rm_approved) {
+      throw new AppError('You have already approved this reimbursement', 400);
+    }
+
     // RM can only act if rm_approved is still false and status is PENDING
     if (ri.rm_approved || ri.status !== 'PENDING') {
       throw new AppError('No actionable reimbursement found for this user', 404);
@@ -112,6 +116,10 @@ const updateReimbursement = async ({ userId, reimbursementId, status, callerId, 
 
   // ─── APE logic ───────────────────────────────────────────────────────────
   if (callerRole === 'APE') {
+    if (status === 'APPROVED' && ri.ape_approved) {
+      throw new AppError('You have already approved this reimbursement', 400);
+    }
+
     // APE can only act if rm_approved = true, ape_approved = false, status = PENDING
     if (!ri.rm_approved || ri.ape_approved || ri.status !== 'PENDING') {
       throw new AppError('No actionable reimbursement found for this user', 404);
@@ -238,7 +246,7 @@ const getReimbursements = async ({ callerRole, callerId }) => {
     );
 
   } else if (callerRole === 'CFO') {
-    // CFO sees fully approved RIs
+    // CFO sees APPROVED and REJECTED RIs for audit
     result = await db.select({
       reimbursementId: reimbursements.id,
       title: reimbursements.title,
@@ -246,10 +254,7 @@ const getReimbursements = async ({ callerRole, callerId }) => {
       amount: reimbursements.amount,
       status: reimbursements.status,
     }).from(reimbursements).where(
-      and(
-        eq(reimbursements.ape_approved, true),
-        eq(reimbursements.status, 'APPROVED')
-      )
+      inArray(reimbursements.status, ['APPROVED', 'REJECTED'])
     );
   }
 
