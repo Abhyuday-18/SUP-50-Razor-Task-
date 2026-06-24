@@ -134,6 +134,7 @@ Do not use TypeScript. Do not use ESM imports — use CommonJS (require/module.e
 
 
 
+
 2nd Prompt:-
 
 Now that the folder structure and scaffold are in place, implement the business logic for the following modules. Do NOT touch any reimbursement logic yet — leave those controller and service stubs as they are.
@@ -236,3 +237,140 @@ GET /rest/reimbursements
 GET /rest/reimbursements/:userId
 
 Leave those route stubs and controller/service functions exactly as they were — empty with TODO comments.
+
+
+3rd Prompt:-
+Now implement the full reimbursements module. The routes are already stubbed — fill in the complete business logic in the controller and service files.
+Core rules before anything else:
+A reimbursement (RI) can only be created by a user with role EMP. All other roles cannot create one. Once created, the EMP cannot edit it in any way.
+A reimbursement has exactly three possible statuses: PENDING, REJECTED, APPROVED.
+Every newly created RI starts with status PENDING.
+DUAL APPROVAL RULE — this is the most important logic in the entire module:
+A reimbursement is only marked APPROVED (visible to EMP as APPROVED) when ALL of these two conditions are met:
+
+The RM to whom that EMP is assigned has approved it (rm_approved = true)
+At least one APE has approved it (ape_approved = true)
+
+Until both conditions are true, the status shown remains PENDING. The rm_approved and ape_approved boolean columns in the reimbursements table track this independently. When both flip to true, update status to APPROVED.
+REJECTION RULE — once rejected it is final:
+If any approver (RM, APE, or CFO acting as either gate) sets status to REJECTED, update status to REJECTED immediately and no further changes are allowed on that RI. Any subsequent attempt to approve or reject an already REJECTED RI must return 400 with message "Reimbursement has already been rejected".
+
+POST /rest/reimbursements
+
+Protected: only EMP role allowed
+Request body: title, description, amount
+Validate all three fields are present — return 400 if any missing
+Validate amount is a positive number — return 400 if not
+Insert into reimbursements table with emp_id from req.user.userId, status = 'PENDING', rm_approved = false, ape_approved = false
+Also insert a row into reimbursement_approvals is NOT needed on creation — only on approval/rejection actions
+Return { status: 'success', data: { reimbursementId, title, description, amount, status: 'PENDING' } }
+
+
+PATCH /rest/reimbursements
+
+Protected: RM, APE, CFO allowed — EMP gets 403
+Request body: userId (the EMP who owns the RI), status (either 'APPROVED' or 'REJECTED')
+Validate status is exactly 'APPROVED' or 'REJECTED' — return 400 otherwise
+Find the reimbursement(s) for that userId that are not yet fully resolved. If multiple pending RIs exist for that EMP, apply the action to all of them that are still actionable by this approver role. If none found return 404 with "No actionable reimbursement found for this user"
+
+Logic by role:
+If caller is RM:
+
+Verify the EMP (userId) is actually assigned to this RM in employee_manager — if not, return 403 with "You are not the reporting manager for this employee"
+If status = 'REJECTED': set status = 'REJECTED' on the RI, insert row into reimbursement_approvals with approver_role = 'RM', decision = 'REJECTED'
+If status = 'APPROVED': set rm_approved = true, insert approval row. Then check if ape_approved is also already true — if yes, set status = 'APPROVED'
+
+If caller is APE:
+
+APE can act on any RI where rm_approved = true and status is still PENDING
+If status = 'REJECTED': set status = 'REJECTED', insert approval row with approver_role = 'APE', decision = 'REJECTED'
+If status = 'APPROVED': set ape_approved = true, insert approval row. Then check if rm_approved is also already true — if yes, set status = 'APPROVED'
+
+If caller is CFO:
+
+CFO follows the same dual-approval flow — does NOT bypass RM + APE gates
+CFO acts based on what stage the RI is at:
+
+If rm_approved = false: CFO action counts as the RM gate — update rm_approved accordingly
+If rm_approved = true and ape_approved = false: CFO action counts as the APE gate — update ape_approved accordingly
+If status = 'REJECTED': return 400 with "Reimbursement has already been rejected"
+Insert approval row with approver_role = 'CFO'
+After each CFO action check if both gates are now true and update status = 'APPROVED' if so
+
+
+Return { status: 'success', data: { message: 'Reimbursement status updated' } }
+
+
+GET /rest/reimbursements
+Protected: all roles allowed but visibility differs by role.
+If caller is EMP:
+
+Return ALL their own RIs regardless of status (PENDING, APPROVED, REJECTED)
+Filter: reimbursements.emp_id = req.user.userId
+
+If caller is RM:
+
+Return only RIs that are PENDING (not yet fully resolved) from EMPs assigned to this RM
+Join employee_manager on emp_id where rm_id = req.user.userId
+Filter: status = 'PENDING'
+
+If caller is APE:
+
+Return RIs where rm_approved = true AND status = 'PENDING' (approved by RM but not yet by APE)
+These are the ones waiting at the APE gate
+
+If caller is CFO:
+
+Return RIs where ape_approved = true AND status = 'APPROVED' (fully approved by both gates)
+
+Response shape exactly:
+json{
+  "status": "success",
+  "data": {
+    "reimbursements": [
+      {
+        "title": "...",
+        "description": "...",
+        "amount": 999,
+        "status": "..."
+      }
+    ]
+  }
+}
+
+GET /rest/reimbursements/:userId
+
+Protected: RM, APE, CFO allowed — EMP gets 403
+Lists ALL reimbursements for the given :userId
+The target user must have role EMP — if not return 400 with "Target user is not an employee"
+RM: can only view if the target EMP is assigned to them in employee_manager — if not return 403 with "This employee is not under your management"
+APE: can view any EMP's RIs
+CFO: can view any EMP's RIs
+Same response shape as above
+
+
+Audit log — reimbursement_approvals table:
+Every approval or rejection action must insert a row into reimbursement_approvals with:
+
+reimbursement_id — the RI being acted on
+approver_id — req.user.userId
+approver_role — req.user.role
+decision — 'APPROVED' or 'REJECTED'
+decided_at — current timestamp
+
+
+Edge cases to handle explicitly:
+
+EMP tries to call PATCH /rest/reimbursements → 403
+EMP tries to call GET /rest/reimbursements/:userId → 403
+RM tries to approve an EMP not assigned to them → 403
+Any approver tries to act on an already REJECTED RI → 400
+userId in PATCH body does not exist → 404
+amount is negative or zero → 400
+Missing title, description, or amount in POST body → 400
+RI not found for given userId in PATCH → 404
+Target user in GET /:userId is not an EMP → 400
+All DB errors caught and passed to global error handler via next(error)
+
+
+Do not change anything outside the reimbursements module — auth, roles, employees, middlewares stay exactly as they are.
