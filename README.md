@@ -218,3 +218,123 @@ The application defines 4 distinct roles:
     }
   }
   ```
+
+---
+
+### 🧾 4. Reimbursement Module (`/rest/reimbursements`)
+
+#### **Create Reimbursement**
+* **Method:** `POST`
+* **Path:** `/rest/reimbursements`
+* **Authorization:** **EMP only** (requires `token` cookie).
+* **Request Body:**
+  ```json
+  {
+    "title": "Taxi Fare",
+    "description": "Travel to client office",
+    "amount": 1500
+  }
+  ```
+* **Validations:**
+  * `title`, `description`, and `amount` are required.
+  * `amount` must be a positive number.
+* **Success Response (201 Created):**
+  ```json
+  {
+    "status": "success",
+    "data": {
+      "reimbursementId": "uuid-here",
+      "title": "Taxi Fare",
+      "description": "Travel to client office",
+      "amount": "1500",
+      "status": "PENDING"
+    }
+  }
+  ```
+
+#### **Get Reimbursements (Role-Based Visibility)**
+* **Method:** `GET`
+* **Path:** `/rest/reimbursements`
+* **Authorization:** **EMP**, **RM**, **APE**, or **CFO** (requires `token` cookie).
+* **Behavior:**
+  * **EMP:** Returns all of their own reimbursements.
+  * **RM:** Returns pending reimbursements from employees assigned under them.
+  * **APE:** Returns pending reimbursements where `rm_approved = true` (waiting for APE gate).
+  * **CFO:** Returns fully approved and rejected reimbursements (for audit).
+* **Success Response (200 OK):**
+  ```json
+  {
+    "status": "success",
+    "data": {
+      "reimbursements": [
+        {
+          "reimbursementId": "uuid-here",
+          "title": "Taxi Fare",
+          "description": "Travel to client office",
+          "amount": "1500",
+          "status": "PENDING"
+        }
+      ]
+    }
+  }
+  ```
+
+#### **Get Reimbursements for Employee**
+* **Method:** `GET`
+* **Path:** `/rest/reimbursements/:userId`
+* **Authorization:** **RM**, **APE**, or **CFO** (requires `token` cookie). Regular `EMP` returns `403 Forbidden`.
+* **Behavior:**
+  * Returns all reimbursements for the target employee (`:userId`).
+  * Target user must have the `EMP` role.
+  * **RM** can only view if the employee is assigned to them.
+* **Success Response (200 OK):**
+  ```json
+  {
+    "status": "success",
+    "data": {
+      "reimbursements": [
+        {
+          "reimbursementId": "uuid-here",
+          "title": "Taxi Fare",
+          "description": "Travel to client office",
+          "amount": "1500",
+          "status": "PENDING"
+        }
+      ]
+    }
+  }
+  ```
+
+#### **Update Reimbursement Status (Approve or Reject)**
+* **Method:** `PATCH`
+* **Path:** `/rest/reimbursements`
+* **Authorization:** **RM**, **APE**, or **CFO** (requires `token` cookie). Regular `EMP` returns `403 Forbidden`.
+* **Request Body:**
+  ```json
+  {
+    "userId": "uuid-of-employee",
+    "reimbursementId": "uuid-of-reimbursement",
+    "status": "APPROVED"
+  }
+  ```
+  *(Note: `status` can be `"APPROVED"` or `"REJECTED"`)*
+* **Validations / Business Rules:**
+  * `userId`, `reimbursementId`, and `status` are required in request body.
+  * Inputs must be in valid UUID format.
+  * Checks that the reimbursement exists and belongs to the given `userId`.
+  * **Rejection Finality:** If the status is already `"REJECTED"`, returns `400 Bad Request` with `"Reimbursement has already been rejected"`.
+  * **Dual Approval Workflow:**
+    * **RM:** If `status = "APPROVED"`, sets `rm_approved = true`. Checks if `ape_approved` is already true. If so, updates status to `"APPROVED"`.
+    * **APE:** Only acts if `rm_approved = true` and `ape_approved = false`. If `status = "APPROVED"`, sets `ape_approved = true`. Checks if `rm_approved` is also true. If so, updates status to `"APPROVED"`.
+    * **CFO sequential overrides:** Acts based on which gate is incomplete. If `rm_approved = false`, CFO action fills the RM gate. If `rm_approved = true` and `ape_approved = false`, CFO action fills the APE gate.
+  * Every action logs an entry in `reimbursement_approvals` table.
+* **Success Response (200 OK):**
+  ```json
+  {
+    "status": "success",
+    "data": {
+      "message": "Reimbursement status updated"
+    }
+  }
+  ```
+
