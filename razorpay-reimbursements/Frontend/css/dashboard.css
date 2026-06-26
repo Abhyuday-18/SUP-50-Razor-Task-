@@ -1,0 +1,49 @@
+/* ── Dashboard Views ── */
+
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
+/* ── Form Views ── */
+
+.view-form {
+  max-width: 480px;
+}
+
+.view-form .btn-primary {
+  width: auto;
+  margin-top: 8px;
+}
+
+.view-form-error {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 12px;
+  min-height: 16px;
+}
+
+/* ── Table Container ── */
+
+.table-container {
+  overflow-x: auto;
+}
+
+/* ── Amount Column ── */
+
+.amount-cell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── Description Column ── */
+
+.desc-cell {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

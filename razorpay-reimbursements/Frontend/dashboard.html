@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Reimbursements dashboard — manage and track expense claims">
+  <title>Reimbursements — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <script>
+    (function() {
+      var t = localStorage.getItem('theme');
+      if (t === 'light') document.documentElement.classList.add('light');
+    })();
+  </script>
+</head>
+<body>
+  <div class="dashboard-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">Reimb.</div>
+      <nav class="sidebar-nav" id="sidebarNav">
+        <!-- Nav links injected by JS based on role -->
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user-name" id="userName">—</div>
+        <div class="sidebar-user-meta">
+          <span class="badge" id="userBadge">—</span>
+          <button class="sidebar-signout" id="signOutBtn">Sign out</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main-area">
+      <header class="content-header">
+        <span class="content-header-title" id="viewTitle">Dashboard</span>
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+          <span id="themeIcon">&#9790;</span>
+        </button>
+      </header>
+      <section class="content-body" id="contentBody">
+        <!-- Views rendered here by JS -->
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/views/emp.js"></script>
+  <script src="js/views/rm.js"></script>
+  <script src="js/views/ape.js"></script>
+  <script src="js/views/cfo.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

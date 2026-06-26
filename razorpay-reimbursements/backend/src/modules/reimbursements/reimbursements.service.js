@@ -216,6 +216,7 @@ const getReimbursements = async ({ callerRole, callerId }) => {
     // RM sees PENDING RIs from EMPs assigned to them
     result = await db.select({
       reimbursementId: reimbursements.id,
+      userId: reimbursements.emp_id,
       title: reimbursements.title,
       description: reimbursements.description,
       amount: reimbursements.amount,
@@ -234,6 +235,7 @@ const getReimbursements = async ({ callerRole, callerId }) => {
     // APE sees RIs where rm_approved = true AND status = PENDING
     result = await db.select({
       reimbursementId: reimbursements.id,
+      userId: reimbursements.emp_id,
       title: reimbursements.title,
       description: reimbursements.description,
       amount: reimbursements.amount,
@@ -249,6 +251,7 @@ const getReimbursements = async ({ callerRole, callerId }) => {
     // CFO sees APPROVED and REJECTED RIs for audit
     result = await db.select({
       reimbursementId: reimbursements.id,
+      userId: reimbursements.emp_id,
       title: reimbursements.title,
       description: reimbursements.description,
       amount: reimbursements.amount,

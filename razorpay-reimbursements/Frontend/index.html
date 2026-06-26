@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Reimbursements management tool — sign in or register">
+  <title>Reimbursements — Sign in</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/auth.css">
+  <script>
+    // Apply saved theme before render to prevent flash
+    (function() {
+      var t = localStorage.getItem('theme');
+      if (t === 'light') document.documentElement.classList.add('light');
+    })();
+  </script>
+</head>
+<body>
+  <div class="auth-page">
+    <!-- Left: Brand Panel -->
+    <div class="auth-brand">
+      <div class="auth-brand-content">
+        <h1 class="auth-brand-title">Reimbursements</h1>
+        <p class="auth-brand-tagline">Manage expense claims across your organization.</p>
+      </div>
+    </div>
+
+    <!-- Right: Form Panel -->
+    <div class="auth-form-panel">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle theme">
+        <span id="themeIcon">&#9790;</span>
+      </button>
+
+      <div class="auth-form-wrapper">
+        <!-- Tabs -->
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="tabSignIn" type="button">Sign in</button>
+          <button class="auth-tab" id="tabRegister" type="button">Register</button>
+        </div>
+
+        <!-- Sign In Form -->
+        <form class="auth-form visible" id="signInForm" autocomplete="off">
+          <div class="form-group">
+            <label class="form-label" for="loginEmail">Email</label>
+            <input class="form-input" type="email" id="loginEmail" required>
+            <span class="form-error" id="loginEmailError"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="loginPassword">Password</label>
+            <input class="form-input" type="password" id="loginPassword" required>
+            <span class="form-error" id="loginPasswordError"></span>
+          </div>
+          <button class="btn btn-primary" type="submit" id="loginBtn">Sign in</button>
+          <p class="auth-form-error" id="loginError"></p>
+        </form>
+
+        <!-- Register Form -->
+        <form class="auth-form" id="registerForm" autocomplete="off">
+          <div class="form-group">
+            <label class="form-label" for="regName">Name</label>
+            <input class="form-input" type="text" id="regName" required>
+            <span class="form-error" id="regNameError"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="regEmail">Email</label>
+            <input class="form-input" type="email" id="regEmail" required>
+            <span class="form-error" id="regEmailError"></span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="regPassword">Password</label>
+            <input class="form-input" type="password" id="regPassword" required>
+            <span class="form-error" id="regPasswordError"></span>
+          </div>
+          <button class="btn btn-primary" type="submit" id="registerBtn">Register</button>
+          <p class="auth-form-error" id="registerError"></p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+</body>
+</html>

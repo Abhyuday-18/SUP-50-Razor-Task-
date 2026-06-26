@@ -1,0 +1,132 @@
+/* ── Auth Page Layout ── */
+
+.auth-page {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ── Left Panel (Brand) ── */
+
+.auth-brand {
+  width: 45%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 60px;
+  background: var(--bg-surface);
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-brand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.auth-brand-content {
+  position: relative;
+  z-index: 1;
+}
+
+.auth-brand-title {
+  font-size: 32px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.auth-brand-tagline {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ── Right Panel (Form) ── */
+
+.auth-form-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  position: relative;
+}
+
+.auth-form-panel .theme-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+.auth-form-wrapper {
+  width: 100%;
+  max-width: 360px;
+}
+
+/* ── Tabs ── */
+
+.auth-tabs {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.auth-tab {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding-bottom: 8px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.auth-tab:hover {
+  color: var(--text-secondary);
+}
+
+.auth-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Form ── */
+
+.auth-form {
+  display: none;
+}
+
+.auth-form.visible {
+  display: block;
+}
+
+.auth-form .btn-primary {
+  margin-top: 8px;
+}
+
+.auth-form-error {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 12px;
+  min-height: 16px;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 768px) {
+  .auth-brand {
+    display: none;
+  }
+
+  .auth-form-panel {
+    padding: 24px;
+  }
+}
