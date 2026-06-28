@@ -43,13 +43,6 @@ const APEPolicy = {
   // ─── Reimbursements module ─────────────────────────────────────────────────
 
   /**
-   * APE can view reimbursements.
-   */
-  canViewReimbursements() {
-    return true;
-  },
-
-  /**
    * APE sees RIs where rm_approved = true AND status = PENDING.
    * These are the ones ready for APE review.
    * @returns {Promise<object[]>}

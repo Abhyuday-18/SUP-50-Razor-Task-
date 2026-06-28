@@ -112,13 +112,6 @@ const CFOPolicy = {
   // ─── Reimbursements module ─────────────────────────────────────────────────
 
   /**
-   * CFO can view reimbursements.
-   */
-  canViewReimbursements() {
-    return true;
-  },
-
-  /**
    * CFO sees APPROVED and REJECTED RIs for audit purposes.
    * @returns {Promise<object[]>}
    */

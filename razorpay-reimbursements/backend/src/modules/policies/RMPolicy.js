@@ -35,13 +35,6 @@ const RMPolicy = {
   // ─── Reimbursements module ─────────────────────────────────────────────────
 
   /**
-   * RM can view reimbursements (their team's queue).
-   */
-  canViewReimbursements() {
-    return true;
-  },
-
-  /**
    * Returns all PENDING RIs from EMPs assigned to this RM.
    * @param {string} callerId  — the RM's user ID
    * @returns {Promise<object[]>}

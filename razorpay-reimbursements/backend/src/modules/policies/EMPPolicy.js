@@ -38,13 +38,6 @@ const EMPPolicy = {
   // ─── Reimbursements module ─────────────────────────────────────────────────
 
   /**
-   * EMP can view reimbursements (their own).
-   */
-  canViewReimbursements() {
-    return true;
-  },
-
-  /**
    * Returns all RIs that belong to this EMP.
    * @param {string} callerId — the EMP's user ID
    * @returns {Promise<object[]>}
@@ -73,13 +66,6 @@ const EMPPolicy = {
     if (ri.emp_id !== callerId) {
       throw new AppError('Forbidden', 403);
     }
-    return true;
-  },
-
-  /**
-   * EMP can always create a reimbursement.
-   */
-  canCreateReimbursement() {
     return true;
   },
 
