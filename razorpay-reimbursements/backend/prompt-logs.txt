@@ -455,3 +455,315 @@ EMP calls GET /rest/reimbursements → sees RI #1 as APPROVED, RI #2 still PENDI
 5th Prompt :-
 1. CFO GET — currently only returns fully APPROVED RIs. Needs to also return REJECTED ones for audit. Fix the query to return where status = 'APPROVED' OR status = 'REJECTED'.
 2. Duplicate approval block — if RM calls PATCH APPROVED on an RI where rm_approved is already true, return 400 with "You have already approved this reimbursement". Same for APE if ape_approved is already true.
+
+6th prompt - Refactoring 
+Refactor ALL authorization checks across ALL modules (auth, roles, employees, reimbursements) to use a unified Policy/Strategy pattern. The goal: every role's permissions live in one policy file, services become thin orchestrators, and adding a role takes 30 minutes instead of a day.
+Architecture:
+Create a policies folder at the root of src/modules. Each module will reference these shared policies, not define its own. One policy per role, with methods for every action: canView(), canCreate(), canUpdate(), canDelete(), canAssign(), etc.
+Folder structure — create these:
+src/
+  modules/
+    policies/                    ← NEW: shared across all modules
+      RolePolicy.js             ← handles all RM permissions
+      APEPolicy.js              ← handles all APE permissions
+      CFOPolicy.js              ← handles all CFO permissions
+      helpers.js                ← shared DB/audit logic
+      index.js                  ← exports all policies
+    auth/
+      auth.service.js           ← refactored (almost no auth checks)
+      auth.routes.js            ← unchanged
+    roles/
+      roles.service.js          ← refactored (uses CFOPolicy)
+      roles.routes.js           ← unchanged
+    employees/
+      employees.service.js      ← refactored (uses policies for visibility + actions)
+      employees.routes.js       ← unchanged
+    reimbursements/
+      reimbursements.service.js ← heavily refactored (delegates all logic to policies)
+      reimbursements.routes.js  ← unchanged
+
+Policy file structure — each role policy has these methods:
+Every policy is a JavaScript object with methods. Methods throw AppError if not allowed, or return data/boolean. No if/else inside services — policies decide everything.
+js// Example: src/modules/policies/RMPolicy.js
+module.exports = {
+  // --- Employees module ---
+  canViewEmployees() {
+    // RM can always view their team
+    return true
+  },
+
+  async getVisibleEmployees(callerId) {
+    // Returns only EMPs assigned to this RM
+    // Called by employees.service during GET
+  },
+
+  // --- Reimbursements module ---
+  async canViewReimbursement(ri, callerId) {
+    // RM can see a RI if the EMP is assigned to them
+    // Return boolean or throw
+  },
+
+  async getVisibleReimbursements(callerId) {
+    // Returns all PENDING RIs from assigned EMPs
+  },
+
+  async canApproveReimbursement(ri, callerId, newStatus) {
+    // Check: is EMP assigned to this RM?
+    // Check: is RI still actionable?
+    // Check: has RM already approved?
+    // Throw if any check fails
+  },
+
+  async approveReimbursement(ri, callerId, newStatus) {
+    // Do the actual DB update
+    // Insert into reimbursement_approvals
+    // Return result
+  },
+
+  // --- Roles module ---
+  canAssignRole() {
+    throw new AppError('Forbidden', 403) // RM cannot assign roles
+  }
+}
+
+What each role's policy must implement:
+RMPolicy.js methods:
+
+canViewEmployees() — always true
+getVisibleEmployees(callerId) — EMPs assigned to this RM
+canViewReimbursements() — can see, returns true
+getVisibleReimbursements(callerId) — PENDING from their EMPs
+canViewReimbursement(ri, callerId) — can see specific RI if EMP is theirs
+canApproveReimbursement(ri, callerId, status) — check RM assignment, actionability, already approved
+approveReimbursement(ri, callerId, status) — set rm_approved, check dual gate, insert audit log
+canAssignRole() — throw 403
+
+APEPolicy.js methods:
+
+canViewEmployees() — true
+getVisibleEmployees() — all EMPs and RMs
+canViewReimbursements() — true
+getVisibleReimbursements() — RIs where rm_approved = true AND status = PENDING
+canViewReimbursement(ri) — can see if rm_approved = true
+canApproveReimbursement(ri, callerId, status) — check rm_approved = true, not already ape_approved, status is PENDING
+approveReimbursement(ri, callerId, status) — set ape_approved, check dual gate, insert audit log
+canAssignRole() — throw 403
+
+CFOPolicy.js methods:
+
+canViewEmployees() — true
+getVisibleEmployees() — all users
+canViewReimbursements() — true
+getVisibleReimbursements() — APPROVED and REJECTED (audit log)
+canViewReimbursement(ri) — always true
+canApproveReimbursement(ri, callerId, status) — check status !== REJECTED, decide which gate to fill
+approveReimbursement(ri, callerId, status) — fill missing gate, check dual gate, insert audit log
+canAssignRole(targetRole) — allow except if targetRole === 'CFO'
+assignRole(userId, role) — update user role, if downgrading RM then delete employee_manager rows
+
+EMPPolicy.js methods:
+
+canViewEmployees() — throw 403
+canViewReimbursements() — true
+getVisibleReimbursements(callerId) — all their own RIs
+canViewReimbursement(ri, callerId) — true if ri.emp_id === callerId
+canCreateReimbursement() — true
+createReimbursement(title, description, amount, empId) — insert RI
+canApproveReimbursement() — throw 403
+canAssignRole() — throw 403
+
+
+src/modules/policies/helpers.js — shared functions:
+These are called by policies, not services. They handle DB operations that multiple policies need:
+jsconst db = require('../../config/db');
+const { reimbursements, reimbursementApprovals, employeeManager } = require('../../db/schema');
+const AppError = require('../../utils/AppError');
+
+// Get all RIs for an RM's team
+async function getRMTeamReimbursements(rmId) { ... }
+
+// Get all RMs's assigned EMPs
+async function getRMAssignedEmployees(rmId) { ... }
+
+// Check if EMP is assigned to this RM
+async function isEMPAssignedToRM(empId, rmId) { ... }
+
+// Update RI approval flags and status
+async function updateReimbursementApproval(riId, updates) { ... }
+
+// Insert audit log entry
+async function logApproval(riId, approverId, role, decision) { ... }
+
+// Handle RM downgrade (delete employee_manager rows)
+async function removeRMAssignments(rmId) { ... }
+
+// Get user by ID
+async function getUser(userId) { ... }
+
+// Get RI by ID with full context
+async function getReimbursement(riId) { ... }
+
+module.exports = { getRMTeamReimbursements, ... }
+
+src/modules/policies/index.js — exports all policies:
+jsconst RMPolicy = require('./RolePolicy');
+const APEPolicy = require('./APEPolicy');
+const CFOPolicy = require('./CFOPolicy');
+const EMPPolicy = require('./EMPPolicy');
+
+module.exports = {
+  'RM': RMPolicy,
+  'APE': APEPolicy,
+  'CFO': CFOPolicy,
+  'EMP': EMPPolicy,
+};
+
+How services use policies — example from reimbursements.service.js:
+jsconst policies = require('../policies');
+
+const updateReimbursement = async ({ userId, reimbursementId, status, callerId, callerRole }) => {
+  // 1. Validate inputs (no role checks here)
+  if (!reimbursementId || !userId || !['APPROVED', 'REJECTED'].includes(status)) {
+    throw new AppError('Invalid input', 400);
+  }
+
+  // 2. Fetch the RI
+  const ri = await helpers.getReimbursement(reimbursementId);
+  if (!ri) throw new AppError('Reimbursement not found', 404);
+  if (ri.emp_id !== userId) throw new AppError('RI does not belong to this user', 400);
+
+  // 3. Get the policy for this role
+  const policy = policies[callerRole];
+  if (!policy) throw new AppError('Forbidden', 403);
+
+  // 4. Policy checks if allowed (throws if not)
+  await policy.canApproveReimbursement(ri, callerId, status);
+
+  // 5. Policy executes the update
+  await policy.approveReimbursement(ri, callerId, status);
+
+  return { message: 'Reimbursement status updated' };
+};
+That's it. 8 lines of actual logic. No if/else. No role checks in the service.
+
+How GET endpoints use policies — example from employees.service.js:
+jsconst getEmployees = async ({ callerRole, callerId }) => {
+  const policy = policies[callerRole];
+  if (!policy) throw new AppError('Forbidden', 403);
+
+  // Policy decides visibility
+  const users = await policy.getVisibleEmployees(callerId);
+
+  return users;
+};
+
+Refactoring checklist — do NOT change route files:
+✓ Create src/modules/policies/ folder and all policy files
+
+✓ Create src/modules/policies/helpers.js with shared DB functions
+
+✓ Create src/modules/policies/index.js that exports all policies
+
+✓ Refactor src/modules/auth/auth.service.js — remove role checks (register/login have none, logout just clears cookie)
+
+✓ Refactor src/modules/roles/roles.service.js — delegate to CFOPolicy
+
+✓ Refactor src/modules/employees/employees.service.js — use policies for both visibility and authorization
+
+✓ Refactor src/modules/reimbursements/reimbursements.service.js — delegate all role logic to policies
+
+✓ Every service method becomes 5-10 lines: validate → fetch → get policy → policy.can*() → policy.execute()
+
+✓ DO NOT touch route files, middleware, config, or schema
+
+✓ Add prompt-logs.txt entries documenting which prompt led to each policy file
+
+Testing strategy after refactor:
+Each policy should have unit tests. Example:
+js// test RMPolicy.approveReimbursement
+const ri = { id: '...', emp_id: emp1, rm_approved: false, ape_approved: false };
+await RMPolicy.canApproveReimbursement(ri, rm1);  // should throw (RM not assigned)
+const result = await RMPolicy.approveReimbursement(ri, rm1);  // should update DB
+
+This is a full refactor of your entire authorization layer. After this runs, your codebase is ready for production and can scale: add a new role in 30 minutes, change a permission in one policy file, test roles in isolation.
+
+================================================================================
+7th Prompt :- (2026-06-28)
+Refactor ALL authorization checks across ALL modules (auth, roles, employees,
+reimbursements) to use a unified Policy/Strategy pattern.
+
+Goal: every role's permissions live in one policy file, services become thin
+orchestrators, and adding a role takes 30 minutes instead of a day.
+
+Files created:
+  src/modules/policies/helpers.js      — shared DB/audit utility functions
+  src/modules/policies/RMPolicy.js     — all RM permissions and actions
+  src/modules/policies/APEPolicy.js    — all APE permissions and actions
+  src/modules/policies/CFOPolicy.js    — all CFO permissions and actions
+  src/modules/policies/EMPPolicy.js    — all EMP permissions and actions
+  src/modules/policies/index.js        — exports all policies keyed by role string
+
+Files refactored (services now ~10-line orchestrators, zero if/else role checks):
+  src/modules/auth/auth.service.js           — policy-agnostic by design (no changes)
+  src/modules/roles/roles.service.js         — delegates to CFOPolicy.canAssignRole/assignRole
+  src/modules/employees/employees.service.js — getEmployees delegates to policy.getVisibleEmployees
+  src/modules/reimbursements/reimbursements.service.js — all CRUD delegates to policy methods
+
+Files updated (non-route):
+  src/modules/roles/roles.controller.js — now forwards callerRole from JWT payload
+
+Pattern per service method:
+  1. Validate inputs
+  2. Fetch the resource (RI, user, etc.)
+  3. Resolve policy: const policy = policies[callerRole]
+  4. policy.can*() — throws AppError if forbidden
+  5. policy.execute() — performs DB updates + audit log
+  6. Return result
+
+Architecture benefit: Adding a new role = create one new *Policy.js + add one
+line to index.js. No service files need to change.
+================================================================================
+
+================================================================================
+8th Prompt :- (2026-06-28)
+Clean up all service files to remove redundant functions left over from the
+Policy/Strategy refactor. Services should contain ONLY thin orchestrator methods
+that controllers call.
+
+Changes made:
+  auth.service.js
+    - Confirmed: 2 functions only (registerUser, loginUser)
+    - logout is handled entirely in the controller (clear cookie); no service needed
+    - Removed verbose block comments from 7th prompt refactor; clean final state
+
+  roles.service.js
+    - Already clean from 7th prompt; 1 function (assignRole). No changes needed.
+
+  employees.service.js
+    - BEFORE: ~146 lines with raw DB queries in assignManager and removeManager
+    - AFTER: ~50 lines, zero raw DB queries
+    - Moved all validation + DB logic into CFOPolicy.canAssignManager/assignManager
+      and CFOPolicy.canRemoveAssignment/removeAssignment
+    - Service now: UUID validate → get policy → policy.can*() → policy.execute()
+
+  reimbursements.service.js
+    - Already thin from 7th prompt; minor cleanup:
+    - createReimbursement reduced to 1-line delegation
+    - getReimbursements stripped to 3 lines
+    - getReimbursementsByUser: only remaining raw DB query is structural
+      user-existence check (not role logic)
+
+Policy files updated:
+  policies/CFOPolicy.js — added canAssignManager, assignManager,
+                          canRemoveAssignment, removeAssignment
+  policies/helpers.js   — added empHasManager, insertManagerAssignment,
+                          deleteManagerAssignment
+
+Final function count per service:
+  auth.service.js:            2 functions (registerUser, loginUser)
+  roles.service.js:           1 function  (assignRole)
+  employees.service.js:       3 functions (getEmployees, assignManager, removeManager)
+  reimbursements.service.js:  4 functions (createReimbursement, updateReimbursement,
+                                            getReimbursements, getReimbursementsByUser)
+  Total: 10 functions across all services
+================================================================================
