@@ -1,7 +1,10 @@
 // api.js — Centralized fetch calls to the backend
 
 var API = (function () {
-  var BASE = 'http://localhost:7002';
+  // TODO: Replace 'https://your-backend-url.onrender.com' with your actual Render backend URL
+  var BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:7002'
+    : 'https://rbac-checker.onrender.com';
 
   function request(method, path, body) {
     var opts = {

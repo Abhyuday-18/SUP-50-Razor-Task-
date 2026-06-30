@@ -1,18 +1,3 @@
-/**
- * src/modules/reimbursements/reimbursements.service.js
- *
- * Reimbursements service — thin orchestrator. No raw DB queries (except the
- * user-existence check which is a structural pre-condition, not role logic).
- * All role-specific authorization and DB writes live in the policies.
- *
- * Functions: createReimbursement, updateReimbursement, getReimbursements,
- *            getReimbursementsByUser
- *
- * Pattern: validate inputs → fetch resource → get policy → policy.can*() → policy.execute()
- * Zero role if/else.
- *
- * Cleanup (2026-06-28): confirmed no dead code; 4 functions only.
- */
 
 const { eq } = require('drizzle-orm');
 const db      = require('../../config/db');

@@ -16,11 +16,12 @@ const login = async (req, res, next) => {
     const { email, password } = req.body;
     const { token, user } = await authService.loginUser({ email, password });
 
+    const isProd = process.env.NODE_ENV === 'production';
     // Set httpOnly cookie
     res.cookie('token', token, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      sameSite: isProd ? 'none' : 'lax',
+      secure: isProd,
       maxAge: 24 * 60 * 60 * 1000, // 1 day
     });
 
@@ -32,10 +33,11 @@ const login = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
+    const isProd = process.env.NODE_ENV === 'production';
     res.clearCookie('token', {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      sameSite: isProd ? 'none' : 'lax',
+      secure: isProd,
     });
     return sendSuccess(res, { message: 'Logged out successfully' });
   } catch (error) {
